@@ -20,6 +20,18 @@ let latestData = {
   timestamp: null
 };
 
+// ============================================================
+// ESP CONNECTION STATUS — ESP32 posts every 2s; if no data
+// arrives within ESP_STALE_MS, we consider it disconnected.
+// ============================================================
+const ESP_STALE_MS = 10000;
+
+function isEspConnected() {
+  if (!latestData.timestamp) return false;
+  const ageMs = Date.now() - new Date(latestData.timestamp).getTime();
+  return ageMs < ESP_STALE_MS;
+}
+
 // History (last 100 readings)
 const MAX_HISTORY = 100;
 const dataHistory = [];
@@ -73,12 +85,22 @@ app.post('/api/data', authenticate, (req, res) => {
 
 // Frontend GETs current data (public — no auth needed for dashboard)
 app.get('/api/data', (req, res) => {
-  res.json(latestData);
+  res.json({ ...latestData, esp_connected: isEspConnected() });
 });
 
 // Get data history
 app.get('/api/history', (req, res) => {
   res.json(dataHistory);
+});
+
+// ESP connection status — frontend polls this to check if ESP32 is alive
+app.get('/api/status', (req, res) => {
+  res.json({
+    esp_connected: isEspConnected(),
+    last_seen: latestData.timestamp,
+    stale_threshold_ms: ESP_STALE_MS,
+    uptime: process.uptime()
+  });
 });
 
 // Health check
@@ -99,6 +121,7 @@ app.get('/', (req, res) => {
     endpoints: {
       'POST /api/data': 'ESP32 sends sensor data (requires x-api-key header)',
       'GET  /api/data': 'Get latest sensor data (public)',
+      'GET  /api/status': 'ESP connection status (public)',
       'GET  /api/history': 'Get last 100 readings (public)',
       'GET  /api/health': 'Health check'
     }
@@ -112,5 +135,6 @@ app.listen(PORT, () => {
   console.log(`[KODE Backend] Endpoints:`);
   console.log(`   POST /api/data   — ESP32 sends data`);
   console.log(`   GET  /api/data   — Dashboard reads data`);
+  console.log(`   GET  /api/status — ESP connection status`);
   console.log(`   GET  /api/health — Health check`);
 });
